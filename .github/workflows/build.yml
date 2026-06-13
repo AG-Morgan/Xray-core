@@ -1,0 +1,40 @@
+name: Build and Release Xray-core
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - '**/*.go'
+      - 'go.mod'
+      - 'go.sum'
+      - 'Makefile'
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build Windows amd64
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+          check-latest: true
+
+      - name: Build Xray
+        env:
+          CGO_ENABLED: 0
+          GOOS: windows
+          GOARCH: amd64
+        run: |
+          go build -o xray.exe -trimpath -ldflags "-s -w -buildid=" ./main
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: xray-windows-amd64
+          path: xray.exe
