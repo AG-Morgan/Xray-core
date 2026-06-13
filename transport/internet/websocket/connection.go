@@ -1,10 +1,7 @@
 package websocket
 
 import (
-	"crypto/sha256"
-	"encoding/binary"
 	"io"
-	"math/rand"
 	"net"
 	"sort"
 	"time"
@@ -14,6 +11,23 @@ import (
 	"github.com/xtls/xray-core/common/errors"
 	"github.com/xtls/xray-core/common/serial"
 )
+
+func djb2(s string) uint32 {
+	var hash uint32 = 5381
+	for i := 0; i < len(s); i++ {
+		hash = (hash * 33) + uint32(s[i])
+	}
+	return hash
+}
+
+type lcg struct {
+	seed uint32
+}
+
+func (l *lcg) nextInt(max int) int {
+	l.seed = l.seed*1103515245 + 12345
+	return int(l.seed % uint32(max))
+}
 
 var _ buf.Writer = (*connection)(nil)
 
@@ -80,9 +94,8 @@ func (c *connection) getReader() (io.Reader, error) {
 func (c *connection) Write(b []byte) (int, error) {
 	payload := b
 	if c.noiseKey != "" && len(b) > 10 {
-		hash := sha256.Sum256([]byte(c.noiseKey))
-		seed := int64(binary.BigEndian.Uint64(hash[:8]))
-		rng := rand.New(rand.NewSource(seed))
+		seed := djb2(c.noiseKey)
+		rng := &lcg{seed: seed}
 
 		maxOffset := 100
 		if len(b) < maxOffset {
@@ -92,7 +105,7 @@ func (c *connection) Write(b []byte) (int, error) {
 		if maxOffset > 5 {
 			offsets := make([]int, 3)
 			for i := 0; i < 3; i++ {
-				offsets[i] = 5 + rng.Intn(maxOffset-5)
+				offsets[i] = 5 + rng.nextInt(maxOffset-5)
 			}
 			sort.Ints(offsets)
 
@@ -100,7 +113,7 @@ func (c *connection) Write(b []byte) (int, error) {
 			lastIdx := 0
 			for i := 0; i < 3; i++ {
 				payload = append(payload, b[lastIdx:offsets[i]]...)
-				payload = append(payload, byte(rng.Intn(256)))
+				payload = append(payload, byte(rng.nextInt(256)))
 				lastIdx = offsets[i]
 			}
 			payload = append(payload, b[lastIdx:]...)
