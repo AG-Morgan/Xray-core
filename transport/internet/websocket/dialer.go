@@ -111,6 +111,13 @@ func dialWebSocket(ctx context.Context, dest net.Destination, streamSettings *in
 		}
 	}
 
+	var noiseKey string
+	header := wsSettings.GetRequestHeader()
+	if v := header.Get("X-Noise-Key"); v != "" {
+		noiseKey = v
+		header.Del("X-Noise-Key")
+	}
+
 	if browser_dialer.HasBrowserDialer() {
 		// For Browser Dialer's optimized IP and non-standard port
 		host := wsSettings.Host
@@ -130,7 +137,9 @@ func dialWebSocket(ctx context.Context, dest net.Destination, streamSettings *in
 			return nil, err
 		}
 
-		return NewConnection(conn, conn.RemoteAddr(), nil, wsSettings.HeartbeatPeriod), nil
+		c := NewConnection(conn, conn.RemoteAddr(), nil, wsSettings.HeartbeatPeriod)
+		c.noiseKey = noiseKey
+		return c, nil
 	}
 
 	host := dest.Address.String()
@@ -139,7 +148,6 @@ func dialWebSocket(ctx context.Context, dest net.Destination, streamSettings *in
 	}
 	uri := protocol + "://" + host + wsSettings.GetNormalizedPath()
 
-	header := wsSettings.GetRequestHeader()
 	// See dialer.DialContext()
 	header.Set("Host", wsSettings.Host)
 	if header.Get("Host") == "" && tConfig != nil {
@@ -162,7 +170,9 @@ func dialWebSocket(ctx context.Context, dest net.Destination, streamSettings *in
 		return nil, errors.New("failed to dial to (", uri, "): ", reason).Base(err)
 	}
 
-	return NewConnection(conn, conn.RemoteAddr(), nil, wsSettings.HeartbeatPeriod), nil
+	c := NewConnection(conn, conn.RemoteAddr(), nil, wsSettings.HeartbeatPeriod)
+	c.noiseKey = noiseKey
+	return c, nil
 }
 
 type delayDialConn struct {
