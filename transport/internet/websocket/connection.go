@@ -1,8 +1,12 @@
 package websocket
 
 import (
+	"crypto/sha256"
+	"encoding/binary"
 	"io"
+	"math/rand"
 	"net"
+	"sort"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -20,6 +24,7 @@ type connection struct {
 	conn       *websocket.Conn
 	reader     io.Reader
 	remoteAddr net.Addr
+	noiseKey   string
 }
 
 func NewConnection(conn *websocket.Conn, remoteAddr net.Addr, extraReader io.Reader, heartbeatPeriod uint32) *connection {
@@ -73,7 +78,36 @@ func (c *connection) getReader() (io.Reader, error) {
 
 // Write implements io.Writer.
 func (c *connection) Write(b []byte) (int, error) {
-	if err := c.conn.WriteMessage(websocket.BinaryMessage, b); err != nil {
+	payload := b
+	if c.noiseKey != "" && len(b) > 10 {
+		hash := sha256.Sum256([]byte(c.noiseKey))
+		seed := int64(binary.BigEndian.Uint64(hash[:8]))
+		rng := rand.New(rand.NewSource(seed))
+
+		maxOffset := 100
+		if len(b) < maxOffset {
+			maxOffset = len(b)
+		}
+
+		if maxOffset > 5 {
+			offsets := make([]int, 3)
+			for i := 0; i < 3; i++ {
+				offsets[i] = 5 + rng.Intn(maxOffset-5)
+			}
+			sort.Ints(offsets)
+
+			payload = make([]byte, 0, len(b)+3)
+			lastIdx := 0
+			for i := 0; i < 3; i++ {
+				payload = append(payload, b[lastIdx:offsets[i]]...)
+				payload = append(payload, byte(rng.Intn(256)))
+				lastIdx = offsets[i]
+			}
+			payload = append(payload, b[lastIdx:]...)
+		}
+	}
+
+	if err := c.conn.WriteMessage(websocket.BinaryMessage, payload); err != nil {
 		return 0, err
 	}
 	return len(b), nil
