@@ -115,7 +115,6 @@ func dialWebSocket(ctx context.Context, dest net.Destination, streamSettings *in
 	header := wsSettings.GetRequestHeader()
 	if v := header.Get("X-Noise-Key"); v != "" {
 		noiseKey = v
-		header.Del("X-Noise-Key")
 	}
 
 	if browser_dialer.HasBrowserDialer() {
